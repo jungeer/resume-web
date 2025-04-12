@@ -222,8 +222,8 @@ const App = () => {
       } catch (fileError) {
         console.error("获取文件内容失败:", fileError);
         setStatus("error");
-        setStatusMessage("获取文件内容失败");
-        message.error("获取文件内容失败");
+        setStatusMessage(`获取文件内容失败: ${fileError.message}`);
+        message.error(`获取文件内容失败: ${fileError.message}`);
 
         // 更新状态为处理失败
         await table.setCellValue(
