@@ -161,9 +161,14 @@ const App = () => {
       const fileName = resumeCell[0].name;
 
       try {
-        // 使用飞书Base JS SDK获取文件内容
-        // 直接使用bitable API获取文件，无需额外的认证
-        const fileResponse = await bitable.base.downloadFile(fileToken);
+        // 使用飞书Base JS SDK获取文件URL，然后使用fetch API下载文件内容
+        // 获取附件的临时URL
+        const fileUrl = await table.getAttachmentUrl(fileToken);
+
+        console.log("fileUrl:", fileUrl);
+
+        // 使用fetch API下载文件内容
+        const fileResponse = await fetch(fileUrl);
         const fileBlob = await fileResponse.blob();
 
         // 使用API服务发送文件到后端
