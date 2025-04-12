@@ -175,50 +175,39 @@ const App = () => {
         const file = new File([fileBlob], fileName);
         const response = await analyzeResume(file);
 
-        if (response.data.success) {
-          // 更新简历文本
-          await table.setCellValue(
-            resumeTextField.id,
-            selectedCandidate.recordId,
-            response.data.resumeText
-          );
+        console.log("response:", response);
 
-          // 更新优化后的简历
-          await table.setCellValue(
-            optimizedResumeField.id,
-            selectedCandidate.recordId,
-            response.data.optimizedResume
-          );
+        // 更新简历文本
+        await table.setCellValue(
+          resumeTextField.id,
+          selectedCandidate.recordId,
+          response.data.resumeText
+        );
 
-          // 更新面试题及答案
-          await table.setCellValue(
-            interviewQuestionsField.id,
-            selectedCandidate.recordId,
-            response.data.interviewQuestions
-          );
+        // 更新优化后的简历
+        await table.setCellValue(
+          optimizedResumeField.id,
+          selectedCandidate.recordId,
+          response.data.optimizedResume
+        );
 
-          // 更新状态为已完成
-          await table.setCellValue(
-            statusField.id,
-            selectedCandidate.recordId,
-            "已完成"
-          );
+        // 更新面试题及答案
+        await table.setCellValue(
+          interviewQuestionsField.id,
+          selectedCandidate.recordId,
+          response.data.interviewQuestions
+        );
 
-          setStatus("success");
-          setStatusMessage("简历处理完成");
-          message.success("简历处理完成");
-        } else {
-          setStatus("error");
-          setStatusMessage(response.data.message || "处理失败");
-          message.error(response.data.message || "处理失败");
+        // 更新状态为已完成
+        await table.setCellValue(
+          statusField.id,
+          selectedCandidate.recordId,
+          "已完成"
+        );
 
-          // 更新状态为处理失败
-          await table.setCellValue(
-            statusField.id,
-            selectedCandidate.recordId,
-            "处理失败"
-          );
-        }
+        setStatus("success");
+        setStatusMessage("简历处理完成");
+        message.success("简历处理完成");
       } catch (fileError) {
         console.error("获取文件内容失败:", fileError);
         setStatus("error");

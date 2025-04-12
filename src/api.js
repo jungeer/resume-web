@@ -7,7 +7,7 @@ import axios from 'axios';
 // 创建axios实例
 const api = axios.create({
   baseURL: '/api',
-  timeout: 60000, // 由于简历处理可能需要较长时间，设置较长的超时时间
+  // timeout: 1800000, // 由于简历处理可能需要较长时间，设置较长的超时时间
   headers: {
     'Content-Type': 'application/json'
   }
