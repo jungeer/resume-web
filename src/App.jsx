@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Select, Button, message, Spin } from "antd";
-import { analyzeResume } from "./api";
+import { parseResume, generateOptimization, generateQuestions } from "./api";
 
 // 飞书侧边栏SDK
 import { bitable } from "@lark-base-open/js-sdk";
@@ -126,13 +126,9 @@ const App = () => {
         !interviewQuestionsField ||
         !statusField
       ) {
-        message.error(
+        throw new Error(
           "表格缺少必要的列，请确保表格中有「个人简历」、「简历文本」、「简历优化」、「面试题及答案」和「状态」列"
         );
-        setLoading(false);
-        setStatus("error");
-        setStatusMessage("表格结构不符合要求");
-        return;
       }
 
       // 获取简历文件信息
@@ -142,11 +138,7 @@ const App = () => {
       );
 
       if (!resumeCell || !resumeCell.length) {
-        message.error("未找到简历文件，请确保已上传简历");
-        setLoading(false);
-        setStatus("error");
-        setStatusMessage("未找到简历文件");
-        return;
+        throw new Error("未找到简历文件，请确保已上传简历");
       }
 
       // 更新状态为处理中
@@ -156,46 +148,47 @@ const App = () => {
         "处理中"
       );
 
-      // 获取文件URL
-      const fileToken = resumeCell[0].token;
-      const fileName = resumeCell[0].name;
-
       try {
-        // 使用飞书Base JS SDK获取文件URL，然后使用fetch API下载文件内容
-        // 获取附件的临时URL
-        const fileUrl = await table.getAttachmentUrl(fileToken);
-
-        console.log("fileUrl:", fileUrl);
-
-        // 使用fetch API下载文件内容
+        // 获取文件URL并下载文件
+        const fileUrl = await table.getAttachmentUrl(resumeCell[0].token);
         const fileResponse = await fetch(fileUrl);
         const fileBlob = await fileResponse.blob();
+        const file = new File([fileBlob], resumeCell[0].name);
 
-        // 使用API服务发送文件到后端
-        const file = new File([fileBlob], fileName);
-        const response = await analyzeResume(file);
-
-        console.log("response:", response);
+        // 1. 解析简历文本
+        setStatusMessage("正在解析简历文本...");
+        const parseResponse = await parseResume(file);
+        const resumeText = parseResponse.data.resumeText;
 
         // 更新简历文本
         await table.setCellValue(
           resumeTextField.id,
           selectedCandidate.recordId,
-          response.data.resumeText
+          resumeText
         );
 
-        // 更新优化后的简历
+        // 2. 生成优化建议
+        setStatusMessage("正在生成优化建议...");
+        const optimizeResponse = await generateOptimization(resumeText);
+        const optimizedResume = optimizeResponse.data.optimizedResume;
+
+        // 更新优化建议
         await table.setCellValue(
           optimizedResumeField.id,
           selectedCandidate.recordId,
-          response.data.optimizedResume
+          optimizedResume
         );
 
-        // 更新面试题及答案
+        // 3. 生成面试题
+        setStatusMessage("正在生成面试题...");
+        const questionsResponse = await generateQuestions(resumeText);
+        const interviewQuestions = questionsResponse.data.interviewQuestions;
+
+        // 更新面试题
         await table.setCellValue(
           interviewQuestionsField.id,
           selectedCandidate.recordId,
-          response.data.interviewQuestions
+          interviewQuestions
         );
 
         // 更新状态为已完成
@@ -208,29 +201,21 @@ const App = () => {
         setStatus("success");
         setStatusMessage("简历处理完成");
         message.success("简历处理完成");
-      } catch (fileError) {
-        console.error("获取文件内容失败:", fileError);
-        setStatus("error");
-        setStatusMessage(`获取文件内容失败: ${fileError.message}`);
-        message.error(`获取文件内容失败: ${fileError.message}`);
-
-        // 更新状态为处理失败
-        await table.setCellValue(
-          statusField.id,
-          selectedCandidate.recordId,
-          "处理失败"
+      } catch (apiError) {
+        console.error("API调用失败:", apiError);
+        throw new Error(
+          apiError.response?.data?.message || "简历处理失败，请稍后重试"
         );
       }
     } catch (error) {
       console.error("简历处理失败:", error);
       setStatus("error");
-      setStatusMessage(error.response?.data?.message || "处理失败");
-      message.error(error.response?.data?.message || "处理失败");
+      setStatusMessage(error.message);
+      message.error(error.message);
 
-      // 尝试更新状态为失败
+      // 更新状态为失败
       try {
-        const selection = await sidebar.getSelection();
-        const table = await bitable.base.getTable(selection.tableId);
+        const table = await bitable.base.getActiveTable();
         const fields = await table.getFieldMetaList();
         const statusField = fields.find((field) => field.name === "状态");
 

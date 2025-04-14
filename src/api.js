@@ -50,4 +50,56 @@ export const getAnalysisStatus = async (jobId) => {
   }
 };
 
+/**
+ * 解析简历
+ * @param {File} file - 简历文件
+ * @returns {Promise} - 返回解析结果
+ */
+export const parseResume = async (file) => {
+  const formData = new FormData();
+  formData.append('resume', file);
+  
+  try {
+    const response = await api.post('/parse', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('简历解析请求失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 生成简历优化建议
+ * @param {string} resumeText - 简历文本
+ * @returns {Promise} - 返回优化建议
+ */
+export const generateOptimization = async (resumeText) => {
+  try {
+    const response = await api.post('/optimize', { resumeText });
+    return response.data;
+  } catch (error) {
+    console.error('生成优化建议失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 生成面试题
+ * @param {string} resumeText - 简历文本
+ * @returns {Promise} - 返回面试题及答案
+ */
+export const generateQuestions = async (resumeText) => {
+  try {
+    const response = await api.post('/questions', { resumeText });
+    return response.data;
+  } catch (error) {
+    console.error('生成面试题失败:', error);
+    throw error;
+  }
+};
+
 export default api;
