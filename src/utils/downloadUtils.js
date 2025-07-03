@@ -473,7 +473,8 @@ export const downloadAllFiles = async (data) => {
       }
     });
     
-    const filename = `简历分析结果_${fileInfo?.name?.split('.')[0] || '未知'}_${new Date().toISOString().split('T')[0]}.zip`;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `简历分析结果_${fileInfo?.name?.split('.')[0] || '未知'}_${timestamp}.zip`;
     saveAs(content, filename);
     
     return true;

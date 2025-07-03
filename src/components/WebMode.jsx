@@ -294,19 +294,31 @@ const WebMode = ({ onBackToSelector }) => {
     setPreviewVisible(true);
   };
 
+  // 生成带时间戳的文件名
+  const generateTimestampedFilename = (basename, extension) => {
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    return `${basename}_${timestamp}.${extension}`;
+  };
+
   // 下载单个文件
-  const handleSingleDownload = async (content, filename, type) => {
+  const handleSingleDownload = async (content, title, type) => {
     const hideLoading = message.loading(
       type === "pdf" ? "正在生成PDF文件..." : "正在下载文件...",
       0
     );
 
     try {
+      let filename;
       if (type === "pdf") {
-        await generatePDF(content, filename, filename.replace(".pdf", ""));
+        filename = generateTimestampedFilename(title, "pdf");
+        await generatePDF(content, filename, title);
         hideLoading();
         message.success("PDF下载成功");
       } else if (type === "md") {
+        filename = generateTimestampedFilename(title, "md");
         await downloadMarkdown(content, filename);
         hideLoading();
         message.success("Markdown文件下载成功");
@@ -405,7 +417,7 @@ const WebMode = ({ onBackToSelector }) => {
             <Button
               type="text"
               icon={<FileMarkdownOutlined />}
-              onClick={() => handleSingleDownload(content, `${title}.md`, "md")}
+              onClick={() => handleSingleDownload(content, title, "md")}
               size="small"
             >
               下载MD
@@ -413,9 +425,7 @@ const WebMode = ({ onBackToSelector }) => {
             <Button
               type="text"
               icon={<FilePdfOutlined />}
-              onClick={() =>
-                handleSingleDownload(content, `${title}.pdf`, "pdf")
-              }
+              onClick={() => handleSingleDownload(content, title, "pdf")}
               size="small"
             >
               下载PDF
@@ -611,9 +621,7 @@ const WebMode = ({ onBackToSelector }) => {
               <Button
                 type="text"
                 icon={<FileMarkdownOutlined />}
-                onClick={() =>
-                  handleSingleDownload(content, `${title}.md`, "md")
-                }
+                onClick={() => handleSingleDownload(content, title, "md")}
                 size="small"
               >
                 下载MD
@@ -621,9 +629,7 @@ const WebMode = ({ onBackToSelector }) => {
               <Button
                 type="text"
                 icon={<FilePdfOutlined />}
-                onClick={() =>
-                  handleSingleDownload(content, `${title}.pdf`, "pdf")
-                }
+                onClick={() => handleSingleDownload(content, title, "pdf")}
                 size="small"
               >
                 下载PDF
@@ -1205,14 +1211,14 @@ const WebMode = ({ onBackToSelector }) => {
         <Button
           type="text"
           icon={<FileMarkdownOutlined />}
-          onClick={() => handleSingleDownload(content, `${title}.md`, "md")}
+          onClick={() => handleSingleDownload(content, title, "md")}
         />
       </Tooltip>
       <Tooltip title="下载 PDF">
         <Button
           type="text"
           icon={<FilePdfOutlined />}
-          onClick={() => handleSingleDownload(content, `${title}.pdf`, "pdf")}
+          onClick={() => handleSingleDownload(content, title, "pdf")}
         />
       </Tooltip>
     </Space>
@@ -1308,7 +1314,38 @@ const WebMode = ({ onBackToSelector }) => {
         ]}
       >
         <div style={{ maxHeight: 600, overflow: "auto" }}>
-          <ReactMarkdown>{previewContent}</ReactMarkdown>
+          {/* 简历文本使用纯文本渲染，其他内容使用Markdown渲染 */}
+          {previewTitle === "简历文本" ? (
+            <div
+              style={{
+                whiteSpace: "pre-wrap",
+                fontFamily:
+                  "'Source Code Pro', 'Consolas', 'Monaco', monospace",
+                fontSize: "14px",
+                lineHeight: "1.6",
+                color: "#2c3e50",
+                backgroundColor: "#f8f9fa",
+                padding: "20px",
+                borderRadius: "8px",
+                border: "1px solid #e9ecef",
+              }}
+            >
+              {previewContent}
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: "20px",
+                fontFamily:
+                  "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+                fontSize: "14px",
+                lineHeight: "1.8",
+                color: "#2c3e50",
+              }}
+            >
+              <ReactMarkdown>{previewContent}</ReactMarkdown>
+            </div>
+          )}
         </div>
       </Modal>
     </div>
