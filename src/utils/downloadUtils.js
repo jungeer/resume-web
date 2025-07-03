@@ -4,7 +4,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 /**
- * 生成PDF文件（使用Canvas渲染避免中文乱码）
+ * 生成PDF文件
  * @param {string} content - 内容文本
  * @param {string} filename - 文件名
  * @param {string} title - 文档标题
@@ -17,75 +17,121 @@ export const generatePDF = async (content, filename, title = '') => {
       position: absolute;
       left: -9999px;
       top: -9999px;
-      width: 794px;
-      padding: 40px;
+      width: 800px;
+      padding: 60px;
       background: white;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
+      font-size: 16px;
+      line-height: 1.8;
       color: #333;
       word-wrap: break-word;
       white-space: pre-wrap;
+      box-sizing: border-box;
     `;
 
     // 创建标题和内容HTML
     let htmlContent = '';
     if (title) {
       htmlContent += `
-        <div style="margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 20px;">
-          <h1 style="margin: 0 0 10px 0; font-size: 24px; color: #1890ff; font-weight: 600;">${title}</h1>
-          <p style="margin: 0; color: #666; font-size: 12px;">生成时间: ${new Date().toLocaleString()}</p>
+        <div style="margin-bottom: 40px; border-bottom: 3px solid #1890ff; padding-bottom: 20px;">
+          <h1 style="margin: 0 0 15px 0; font-size: 28px; color: #1890ff; font-weight: 600; text-align: center;">${title}</h1>
+          <p style="margin: 0; color: #666; font-size: 14px; text-align: center;">生成时间: ${new Date().toLocaleString()}</p>
         </div>
       `;
     }
     
-    // 将 Markdown 格式转换为 HTML
+    // 将 Markdown 格式转换为 HTML，优化样式
     const htmlContentFormatted = content
-      .replace(/^# (.*$)/gm, '<h1 style="color: #1890ff; margin: 20px 0 10px 0; font-size: 20px;">$1</h1>')
-      .replace(/^## (.*$)/gm, '<h2 style="color: #52c41a; margin: 16px 0 8px 0; font-size: 18px;">$1</h2>')
-      .replace(/^### (.*$)/gm, '<h3 style="color: #722ed1; margin: 12px 0 6px 0; font-size: 16px;">$1</h3>')
-      .replace(/^\* (.*$)/gm, '<li style="margin: 4px 0;">$1</li>')
-      .replace(/^- (.*$)/gm, '<li style="margin: 4px 0;">$1</li>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1890ff;">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/---/g, '<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">')
-      .replace(/\n\n/g, '</p><p style="margin: 8px 0;">')
+      .replace(/^# (.*$)/gm, '<h1 style="color: #1890ff; margin: 30px 0 20px 0; font-size: 24px; font-weight: 600; border-bottom: 2px solid #1890ff; padding-bottom: 10px;">$1</h1>')
+      .replace(/^## (.*$)/gm, '<h2 style="color: #52c41a; margin: 25px 0 15px 0; font-size: 20px; font-weight: 600;">$1</h2>')
+      .replace(/^### (.*$)/gm, '<h3 style="color: #722ed1; margin: 20px 0 12px 0; font-size: 18px; font-weight: 600;">$1</h3>')
+      .replace(/^\* (.*$)/gm, '<li style="margin: 8px 0; padding-left: 5px;">$1</li>')
+      .replace(/^- (.*$)/gm, '<li style="margin: 8px 0; padding-left: 5px;">$1</li>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1890ff; font-weight: 600;">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em style="color: #fa8c16;">$1</em>')
+      .replace(/---/g, '<hr style="border: none; border-top: 2px solid #f0f0f0; margin: 30px 0;">')
+      .replace(/\n\n/g, '</p><p style="margin: 12px 0; text-indent: 0;">')
       .replace(/\n/g, '<br>');
 
-    htmlContent += `<div style="font-size: 14px; line-height: 1.8;"><p style="margin: 8px 0;">${htmlContentFormatted}</p></div>`;
+    // 添加内容容器
+    htmlContent += `
+      <div style="font-size: 16px; line-height: 1.8; color: #333;">
+        <p style="margin: 12px 0; text-indent: 0;">${htmlContentFormatted}</p>
+      </div>
+    `;
     
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
 
-    // 使用 html2canvas 渲染
+    // 等待字体和样式加载
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 使用 html2canvas 渲染，优化参数
     const canvas = await html2canvas(container, {
       useCORS: true,
       allowTaint: true,
-      scale: 2, // 提高清晰度
+      scale: 1.5, // 降低scale避免过度压缩
       backgroundColor: '#ffffff',
-      width: 794,
-      height: container.scrollHeight
+      width: 800,
+      height: container.scrollHeight,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 800,
+      windowHeight: container.scrollHeight
     });
 
     // 清理临时容器
     document.body.removeChild(container);
 
-    // 创建PDF
+    // 创建PDF，使用A4尺寸
     const doc = new jsPDF({
       orientation: 'portrait',
-      unit: 'px',
-      format: [794, canvas.height] // 使用实际渲染高度
+      unit: 'mm',
+      format: 'a4'
     });
 
-    // 将canvas图片添加到PDF
-    const imgData = canvas.toDataURL('image/png');
-    doc.addImage(imgData, 'PNG', 0, 0, 794, canvas.height);
-
-    // 如果内容太长，需要分页
-    const pageHeight = 1123; // A4页面高度（像素）
-    if (canvas.height > pageHeight) {
-      // 重新渲染分页版本
-      return await generatePaginatedPDF(content, filename, title);
+    // 计算PDF页面尺寸
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    // 计算图片尺寸以适应页面
+    const imgWidth = pageWidth - 20; // 留出边距
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    
+    // 如果内容超过一页，需要分页处理
+    if (imgHeight > pageHeight - 20) {
+      const totalPages = Math.ceil(imgHeight / (pageHeight - 20));
+      
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          doc.addPage();
+        }
+        
+        const yOffset = i * (pageHeight - 20);
+        const remainingHeight = Math.min(pageHeight - 20, imgHeight - yOffset);
+        
+        // 创建裁剪后的canvas
+        const clippedCanvas = document.createElement('canvas');
+        const clippedCtx = clippedCanvas.getContext('2d');
+        
+        clippedCanvas.width = canvas.width;
+        clippedCanvas.height = (remainingHeight * canvas.width) / imgWidth;
+        
+        clippedCtx.drawImage(
+          canvas,
+          0, (yOffset * canvas.width) / imgWidth,
+          canvas.width, clippedCanvas.height,
+          0, 0,
+          canvas.width, clippedCanvas.height
+        );
+        
+        const clippedImgData = clippedCanvas.toDataURL('image/png');
+        doc.addImage(clippedImgData, 'PNG', 10, 10, imgWidth, remainingHeight);
+      }
+    } else {
+      // 内容适合一页
+      const imgData = canvas.toDataURL('image/png');
+      doc.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
     }
 
     doc.save(filename);
@@ -97,99 +143,14 @@ export const generatePDF = async (content, filename, title = '') => {
 };
 
 /**
- * 生成分页PDF（处理长内容）
+ * 生成分页PDF（处理长内容）- 废弃，统一使用上面的方法
  * @param {string} content - 内容文本
  * @param {string} filename - 文件名
  * @param {string} title - 文档标题
  */
 const generatePaginatedPDF = async (content, filename, title = '') => {
-  try {
-    const doc = new jsPDF();
-    const pageWidth = 210; // A4宽度 mm
-    const pageHeight = 297; // A4高度 mm
-    const margin = 20;
-    const lineHeight = 7;
-    const maxLineWidth = pageWidth - 2 * margin;
-
-    // 设置字体
-    doc.setFont('helvetica');
-    
-    let yPosition = margin;
-    
-    // 添加标题
-    if (title) {
-      doc.setFontSize(16);
-      doc.setTextColor(24, 144, 255); // 蓝色
-      doc.text(title, margin, yPosition);
-      yPosition += 10;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100); // 灰色
-      doc.text(`生成时间: ${new Date().toLocaleString()}`, margin, yPosition);
-      yPosition += 5;
-      
-      // 分割线
-      doc.setDrawColor(200, 200, 200);
-      doc.line(margin, yPosition, pageWidth - margin, yPosition);
-      yPosition += 15;
-    }
-
-    // 处理内容
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0); // 黑色
-    
-    const lines = content.split('\n');
-    
-    for (const line of lines) {
-      if (!line.trim()) {
-        yPosition += lineHeight;
-        continue;
-      }
-      
-      // 处理特殊格式
-      if (line.startsWith('# ')) {
-        doc.setFontSize(14);
-        doc.setTextColor(24, 144, 255);
-        const text = line.substring(2);
-        doc.text(text, margin, yPosition);
-        yPosition += 10;
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        continue;
-      }
-      
-      if (line.startsWith('## ')) {
-        doc.setFontSize(12);
-        doc.setTextColor(82, 196, 26);
-        const text = line.substring(3);
-        doc.text(text, margin, yPosition);
-        yPosition += 8;
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        continue;
-      }
-      
-      // 处理普通文本
-      const wrappedLines = doc.splitTextToSize(line, maxLineWidth);
-      
-      for (const wrappedLine of wrappedLines) {
-        // 检查是否需要新页面
-        if (yPosition > pageHeight - margin) {
-          doc.addPage();
-          yPosition = margin;
-        }
-        
-        doc.text(wrappedLine, margin, yPosition);
-        yPosition += lineHeight;
-      }
-    }
-
-    doc.save(filename);
-    return true;
-  } catch (error) {
-    console.error('生成分页PDF时发生错误:', error);
-    throw new Error('分页PDF生成失败: ' + error.message);
-  }
+  // 直接调用主方法，保持一致性
+  return await generatePDF(content, filename, title);
 };
 
 /**
@@ -291,69 +252,122 @@ const generatePDFBlob = async (content, title = '') => {
       position: absolute;
       left: -9999px;
       top: -9999px;
-      width: 794px;
-      padding: 40px;
+      width: 800px;
+      padding: 60px;
       background: white;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
+      font-size: 16px;
+      line-height: 1.8;
       color: #333;
       word-wrap: break-word;
       white-space: pre-wrap;
+      box-sizing: border-box;
     `;
 
     // 创建标题和内容HTML
     let htmlContent = '';
     if (title) {
       htmlContent += `
-        <div style="margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 20px;">
-          <h1 style="margin: 0 0 10px 0; font-size: 24px; color: #1890ff; font-weight: 600;">${title}</h1>
-          <p style="margin: 0; color: #666; font-size: 12px;">生成时间: ${new Date().toLocaleString()}</p>
+        <div style="margin-bottom: 40px; border-bottom: 3px solid #1890ff; padding-bottom: 20px;">
+          <h1 style="margin: 0 0 15px 0; font-size: 28px; color: #1890ff; font-weight: 600; text-align: center;">${title}</h1>
+          <p style="margin: 0; color: #666; font-size: 14px; text-align: center;">生成时间: ${new Date().toLocaleString()}</p>
         </div>
       `;
     }
     
-    // 将 Markdown 格式转换为 HTML
+    // 将 Markdown 格式转换为 HTML，优化样式
     const htmlContentFormatted = content
-      .replace(/^# (.*$)/gm, '<h1 style="color: #1890ff; margin: 20px 0 10px 0; font-size: 20px;">$1</h1>')
-      .replace(/^## (.*$)/gm, '<h2 style="color: #52c41a; margin: 16px 0 8px 0; font-size: 18px;">$1</h2>')
-      .replace(/^### (.*$)/gm, '<h3 style="color: #722ed1; margin: 12px 0 6px 0; font-size: 16px;">$1</h3>')
-      .replace(/^\* (.*$)/gm, '<li style="margin: 4px 0;">$1</li>')
-      .replace(/^- (.*$)/gm, '<li style="margin: 4px 0;">$1</li>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1890ff;">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/---/g, '<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">')
-      .replace(/\n\n/g, '</p><p style="margin: 8px 0;">')
+      .replace(/^# (.*$)/gm, '<h1 style="color: #1890ff; margin: 30px 0 20px 0; font-size: 24px; font-weight: 600; border-bottom: 2px solid #1890ff; padding-bottom: 10px;">$1</h1>')
+      .replace(/^## (.*$)/gm, '<h2 style="color: #52c41a; margin: 25px 0 15px 0; font-size: 20px; font-weight: 600;">$1</h2>')
+      .replace(/^### (.*$)/gm, '<h3 style="color: #722ed1; margin: 20px 0 12px 0; font-size: 18px; font-weight: 600;">$1</h3>')
+      .replace(/^\* (.*$)/gm, '<li style="margin: 8px 0; padding-left: 5px;">$1</li>')
+      .replace(/^- (.*$)/gm, '<li style="margin: 8px 0; padding-left: 5px;">$1</li>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1890ff; font-weight: 600;">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em style="color: #fa8c16;">$1</em>')
+      .replace(/---/g, '<hr style="border: none; border-top: 2px solid #f0f0f0; margin: 30px 0;">')
+      .replace(/\n\n/g, '</p><p style="margin: 12px 0; text-indent: 0;">')
       .replace(/\n/g, '<br>');
 
-    htmlContent += `<div style="font-size: 14px; line-height: 1.8;"><p style="margin: 8px 0;">${htmlContentFormatted}</p></div>`;
+    // 添加内容容器
+    htmlContent += `
+      <div style="font-size: 16px; line-height: 1.8; color: #333;">
+        <p style="margin: 12px 0; text-indent: 0;">${htmlContentFormatted}</p>
+      </div>
+    `;
     
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
 
-    // 使用 html2canvas 渲染
+    // 等待字体和样式加载
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 使用 html2canvas 渲染，优化参数
     const canvas = await html2canvas(container, {
       useCORS: true,
       allowTaint: true,
-      scale: 2, // 提高清晰度
+      scale: 1.5, // 降低scale避免过度压缩
       backgroundColor: '#ffffff',
-      width: 794,
-      height: container.scrollHeight
+      width: 800,
+      height: container.scrollHeight,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 800,
+      windowHeight: container.scrollHeight
     });
 
     // 清理临时容器
     document.body.removeChild(container);
 
-    // 创建PDF
+    // 创建PDF，使用A4尺寸
     const doc = new jsPDF({
       orientation: 'portrait',
-      unit: 'px',
-      format: [794, canvas.height] // 使用实际渲染高度
+      unit: 'mm',
+      format: 'a4'
     });
 
-    // 将canvas图片添加到PDF
-    const imgData = canvas.toDataURL('image/png');
-    doc.addImage(imgData, 'PNG', 0, 0, 794, canvas.height);
+    // 计算PDF页面尺寸
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    // 计算图片尺寸以适应页面
+    const imgWidth = pageWidth - 20; // 留出边距
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    
+    // 如果内容超过一页，需要分页处理
+    if (imgHeight > pageHeight - 20) {
+      const totalPages = Math.ceil(imgHeight / (pageHeight - 20));
+      
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          doc.addPage();
+        }
+        
+        const yOffset = i * (pageHeight - 20);
+        const remainingHeight = Math.min(pageHeight - 20, imgHeight - yOffset);
+        
+        // 创建裁剪后的canvas
+        const clippedCanvas = document.createElement('canvas');
+        const clippedCtx = clippedCanvas.getContext('2d');
+        
+        clippedCanvas.width = canvas.width;
+        clippedCanvas.height = (remainingHeight * canvas.width) / imgWidth;
+        
+        clippedCtx.drawImage(
+          canvas,
+          0, (yOffset * canvas.width) / imgWidth,
+          canvas.width, clippedCanvas.height,
+          0, 0,
+          canvas.width, clippedCanvas.height
+        );
+        
+        const clippedImgData = clippedCanvas.toDataURL('image/png');
+        doc.addImage(clippedImgData, 'PNG', 10, 10, imgWidth, remainingHeight);
+      }
+    } else {
+      // 内容适合一页
+      const imgData = canvas.toDataURL('image/png');
+      doc.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+    }
 
     // 返回PDF的Blob
     return doc.output('blob');
