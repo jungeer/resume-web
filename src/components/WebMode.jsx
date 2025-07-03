@@ -249,15 +249,23 @@ const WebMode = ({ onBackToSelector }) => {
 
   // 下载单个文件
   const handleSingleDownload = async (content, filename, type) => {
+    const hideLoading = message.loading(
+      type === "pdf" ? "正在生成PDF文件..." : "正在下载文件...",
+      0
+    );
+
     try {
       if (type === "pdf") {
         await generatePDF(content, filename, filename.replace(".pdf", ""));
+        hideLoading();
         message.success("PDF下载成功");
       } else if (type === "md") {
         await downloadMarkdown(content, filename);
+        hideLoading();
         message.success("Markdown文件下载成功");
       }
     } catch (error) {
+      hideLoading();
       message.error(error.message || "下载失败");
     }
   };
@@ -278,6 +286,8 @@ const WebMode = ({ onBackToSelector }) => {
 
   // 下载全部文件（ZIP）
   const handleDownloadAllFiles = async () => {
+    const hideLoading = message.loading("正在生成文件包，包含PDF文件...", 0);
+
     try {
       const data = {
         fileInfo,
@@ -287,8 +297,10 @@ const WebMode = ({ onBackToSelector }) => {
       };
 
       await downloadAllFiles(data);
-      message.success("文件打包下载成功");
+      hideLoading();
+      message.success("文件打包下载成功，包含PDF、Markdown、TXT等格式");
     } catch (error) {
+      hideLoading();
       console.error("打包下载时发生错误:", error);
       message.error(error.message || "打包下载失败");
     }
