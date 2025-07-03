@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Upload,
   Button,
@@ -14,6 +14,11 @@ import {
   Collapse,
   Checkbox,
   Alert,
+  Select,
+  Row,
+  Col,
+  Tooltip,
+  Badge,
 } from "antd";
 import {
   InboxOutlined,
@@ -27,9 +32,19 @@ import {
   FileMarkdownOutlined,
   CopyOutlined,
   SettingOutlined,
+  RobotOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
+  ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
-import { parseResume, generateOptimization, generateQuestions } from "../api";
+import {
+  parseResume,
+  generateOptimization,
+  generateQuestions,
+  getConfigurations,
+  analyzeResumeIntelligently,
+} from "../api";
 import {
   generatePDF,
   downloadMarkdown,
@@ -44,35 +59,62 @@ const { Step } = Steps;
 const { Title, Paragraph, Text } = Typography;
 const { Dragger } = Upload;
 const { Panel } = Collapse;
+const { Option } = Select;
 
 const WebMode = ({ onBackToSelector }) => {
   const [loading, setLoading] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
+
   const [fileInfo, setFileInfo] = useState(null);
   const [resumeText, setResumeText] = useState("");
   const [optimizedResume, setOptimizedResume] = useState("");
   const [interviewQuestions, setInterviewQuestions] = useState("");
-  const [processingStatus, setProcessingStatus] = useState("");
+
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewContent, setPreviewContent] = useState("");
   const [previewTitle, setPreviewTitle] = useState("");
 
-  // 用户选择的生成内容配置
-  const [selectedOptions, setSelectedOptions] = useState({
-    generateText: true, // 生成文本（必选，不可更改）
-    generateSuggestions: true, // 生成建议（默认选中）
-    generateQuestions: true, // 生成面试题（默认选中）
-  });
-
   // 每个内容类型的独立状态
   const [contentStatus, setContentStatus] = useState({
     text: { loading: false, completed: false, error: null },
-    suggestions: { loading: false, completed: false, error: null },
+    optimization: { loading: false, completed: false, error: null },
     questions: { loading: false, completed: false, error: null },
   });
 
-  // 是否显示配置面板
-  const [showConfig, setShowConfig] = useState(false);
+  // 配置相关状态
+  const [configurations, setConfigurations] = useState({
+    careers: {},
+    levels: {},
+  });
+  const [selectedCareer, setSelectedCareer] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
+  const [isSmartMode, setIsSmartMode] = useState(true);
+  const [intelligentAnalysis, setIntelligentAnalysis] = useState(null);
+
+  // 生成内容控制
+  const [generateOptions, setGenerateOptions] = useState({
+    text: true, // 文本解析（必选）
+    optimization: true, // 优化建议
+    questions: true, // 面试题
+  });
+
+  // 组件挂载时获取配置
+  useEffect(() => {
+    loadConfigurations();
+  }, []);
+
+  // 加载配置数据
+  const loadConfigurations = async () => {
+    try {
+      const response = await getConfigurations();
+      if (response.success) {
+        setConfigurations(response.data);
+      }
+    } catch (error) {
+      console.error("加载配置失败:", error);
+      message.error("加载配置失败");
+    }
+  };
 
   // 文件上传配置
   const uploadProps = {
@@ -98,24 +140,13 @@ const WebMode = ({ onBackToSelector }) => {
       const { file } = info;
       if (file.status !== "uploading" && file.status !== "error") {
         setFileInfo(file);
-        setCurrentStep(1);
+        resetResults();
       }
     },
     onRemove: () => {
       setFileInfo(null);
-      setCurrentStep(0);
-      setResumeText("");
-      setOptimizedResume("");
-      setInterviewQuestions("");
+      resetResults();
     },
-  };
-
-  // 处理选项变化
-  const handleOptionChange = (option, checked) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [option]: checked,
-    }));
   };
 
   // 更新内容状态的辅助函数
@@ -135,10 +166,8 @@ const WebMode = ({ onBackToSelector }) => {
 
     try {
       setLoading(true);
-      setCurrentStep(2);
 
-      // 步骤1：解析简历文本（必须执行）
-      setProcessingStatus("正在解析简历文本...");
+      // 第1步：解析简历文本
       updateContentStatus("text", { loading: true, error: null });
 
       const parseResponse = await parseResume(fileInfo);
@@ -146,28 +175,51 @@ const WebMode = ({ onBackToSelector }) => {
       if (parseResponse.success) {
         setResumeText(parseResponse.data.resumeText);
         updateContentStatus("text", { loading: false, completed: true });
-        setCurrentStep(3);
         message.success("简历解析完成");
+
+        // 如果启用智能模式，进行智能分析
+        if (isSmartMode) {
+          try {
+            const analysisResponse = await analyzeResumeIntelligently(
+              parseResponse.data.resumeText
+            );
+            if (analysisResponse.success) {
+              setIntelligentAnalysis(analysisResponse.data);
+              // 自动应用智能推荐
+              setSelectedCareer(analysisResponse.data.career || "");
+              setSelectedCategory(analysisResponse.data.category || "");
+              setSelectedLevel(analysisResponse.data.level || "");
+            }
+          } catch (error) {
+            console.warn("智能分析失败:", error);
+          }
+        }
+
+        // 获取职业级别配置
+        const options = {
+          career: selectedCareer,
+          level: selectedLevel,
+          category: selectedCategory,
+        };
 
         // 并行处理其他选中的内容
         const promises = [];
 
-        if (selectedOptions.generateSuggestions) {
+        if (generateOptions.optimization) {
           promises.push(
-            handleGenerateOptimization(parseResponse.data.resumeText)
+            handleGenerateOptimization(parseResponse.data.resumeText, options)
           );
         }
 
-        if (selectedOptions.generateQuestions) {
-          promises.push(handleGenerateQuestions(parseResponse.data.resumeText));
+        if (generateOptions.questions) {
+          promises.push(
+            handleGenerateQuestions(parseResponse.data.resumeText, options)
+          );
         }
 
         // 等待所有任务完成
         await Promise.all(promises);
-
-        setCurrentStep(getCompletedStep());
         setLoading(false);
-        setProcessingStatus("");
       } else {
         throw new Error(parseResponse.message || "简历解析失败");
       }
@@ -176,29 +228,34 @@ const WebMode = ({ onBackToSelector }) => {
       message.error(error.message || "处理简历时发生错误");
       updateContentStatus("text", { loading: false, error: error.message });
       setLoading(false);
-      setProcessingStatus("");
     }
   };
 
   // 生成优化建议
-  const handleGenerateOptimization = async (text) => {
+  const handleGenerateOptimization = async (text, options) => {
     try {
-      updateContentStatus("suggestions", { loading: true, error: null });
+      updateContentStatus("optimization", { loading: true, error: null });
 
-      const optimizeResponse = await generateOptimization(text);
+      const optimizeResponse = await generateOptimization(text, options);
 
       if (optimizeResponse.success) {
         setOptimizedResume(optimizeResponse.data.optimizedResume);
-        updateContentStatus("suggestions", { loading: false, completed: true });
+        updateContentStatus("optimization", {
+          loading: false,
+          completed: true,
+        });
         message.success("优化建议生成完成");
       } else {
         const errorMsg = optimizeResponse.message || "优化建议生成失败";
         console.warn("优化建议生成失败:", errorMsg);
-        updateContentStatus("suggestions", { loading: false, error: errorMsg });
+        updateContentStatus("optimization", {
+          loading: false,
+          error: errorMsg,
+        });
       }
     } catch (error) {
       console.error("生成优化建议时发生错误:", error);
-      updateContentStatus("suggestions", {
+      updateContentStatus("optimization", {
         loading: false,
         error: error.message,
       });
@@ -206,11 +263,11 @@ const WebMode = ({ onBackToSelector }) => {
   };
 
   // 生成面试题
-  const handleGenerateQuestions = async (text) => {
+  const handleGenerateQuestions = async (text, options) => {
     try {
       updateContentStatus("questions", { loading: true, error: null });
 
-      const questionsResponse = await generateQuestions(text);
+      const questionsResponse = await generateQuestions(text, options);
 
       if (questionsResponse.success) {
         setInterviewQuestions(questionsResponse.data.interviewQuestions);
@@ -228,16 +285,6 @@ const WebMode = ({ onBackToSelector }) => {
         error: error.message,
       });
     }
-  };
-
-  // 获取完成步骤的索引
-  const getCompletedStep = () => {
-    // 计算应该跳转到哪个步骤
-    let step = 3; // 基础步骤（上传、确认、处理、文本）
-    if (selectedOptions.generateSuggestions) step++; // 优化建议
-    if (selectedOptions.generateQuestions) step++; // 面试题
-    step++; // 完成下载
-    return step;
   };
 
   // 预览Markdown内容
@@ -307,44 +354,16 @@ const WebMode = ({ onBackToSelector }) => {
   };
 
   // 重新开始
-  const handleRestart = () => {
-    setFileInfo(null);
-    setCurrentStep(0);
+  const resetResults = () => {
     setResumeText("");
     setOptimizedResume("");
     setInterviewQuestions("");
-    setProcessingStatus("");
-    setLoading(false);
-    setShowConfig(false);
-
-    // 重置内容状态
+    setIntelligentAnalysis(null);
     setContentStatus({
       text: { loading: false, completed: false, error: null },
-      suggestions: { loading: false, completed: false, error: null },
+      optimization: { loading: false, completed: false, error: null },
       questions: { loading: false, completed: false, error: null },
     });
-  };
-
-  // 生成动态步骤配置
-  const getDynamicSteps = () => {
-    const steps = [
-      { title: "上传简历", description: "支持PDF、Word、TXT格式" },
-      { title: "确认信息", description: "检查上传的文件信息" },
-      { title: "解析处理", description: "AI解析简历内容" },
-      { title: "简历文本", description: "显示解析的文本内容" },
-    ];
-
-    if (selectedOptions.generateSuggestions) {
-      steps.push({ title: "优化建议", description: "生成个性化建议" });
-    }
-
-    if (selectedOptions.generateQuestions) {
-      steps.push({ title: "面试题库", description: "生成相关面试题" });
-    }
-
-    steps.push({ title: "完成下载", description: "查看结果并下载" });
-
-    return steps;
   };
 
   // 渲染内容卡片
@@ -719,284 +738,576 @@ const WebMode = ({ onBackToSelector }) => {
     );
   };
 
-  return (
-    <div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto" }}>
-      {/* 顶部导航 */}
-      <div style={{ marginBottom: "24px" }}>
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          onClick={onBackToSelector}
-          style={{ marginBottom: "16px" }}
-        >
-          返回模式选择
-        </Button>
-      </div>
+  // 获取当前选择的职业分类
+  const getCurrentCategories = () => {
+    if (!selectedCareer || !configurations.careers[selectedCareer]) {
+      return [];
+    }
+    return configurations.careers[selectedCareer].categories || [];
+  };
 
-      <Title level={2} style={{ textAlign: "center", marginBottom: "32px" }}>
-        智能简历分析系统
-      </Title>
-
-      {/* 生成内容配置 - 精简版 */}
-      <Card style={{ marginBottom: "16px" }}>
-        <div
+  // 渲染左侧配置面板
+  const renderLeftPanel = () => (
+    <Card
+      title={
+        <Space>
+          <SettingOutlined style={{ color: "#1890ff" }} />
+          <span
+            style={{ fontSize: "16px", fontWeight: "600", color: "#1890ff" }}
+          >
+            分析配置
+          </span>
+        </Space>
+      }
+      style={{
+        borderRadius: "12px",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+        backgroundColor: "#ffffff",
+        border: "1px solid #e6f7ff",
+      }}
+      bodyStyle={{ padding: "20px" }}
+    >
+      {/* 文件上传区域 */}
+      <div style={{ marginBottom: 28 }}>
+        <Title
+          level={5}
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            minHeight: "36px",
+            color: "#1890ff",
+            fontWeight: "600",
+            marginBottom: 16,
+            fontSize: "15px",
           }}
         >
-          <div
+          📁 1. 上传简历文件
+        </Title>
+        <Dragger
+          {...uploadProps}
+          style={{
+            marginBottom: 16,
+            borderRadius: "8px",
+            border: "2px dashed #1890ff",
+            backgroundColor: "#f6ffed",
+          }}
+        >
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined style={{ color: "#1890ff", fontSize: "48px" }} />
+          </p>
+          <p
+            className="ant-upload-text"
+            style={{ color: "#1890ff", fontWeight: "600" }}
+          >
+            点击或拖拽文件到此区域上传
+          </p>
+          <p className="ant-upload-hint" style={{ color: "#52c41a" }}>
+            支持 PDF、Word、TXT 格式，文件大小不超过10MB
+          </p>
+        </Dragger>
+
+        {fileInfo && (
+          <Alert
+            message={`已选择文件: ${fileInfo.name}`}
+            description={`文件大小: ${formatFileSize(fileInfo.size)}`}
+            type="success"
+            showIcon
+            style={{ borderRadius: "8px" }}
+          />
+        )}
+      </div>
+
+      {/* 智能分析开关 */}
+      <div style={{ marginBottom: 28 }}>
+        <Title
+          level={5}
+          style={{
+            color: "#1890ff",
+            fontWeight: "600",
+            marginBottom: 16,
+            fontSize: "15px",
+          }}
+        >
+          🤖 2. 分析模式
+        </Title>
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Button
+            type={isSmartMode ? "primary" : "default"}
+            icon={<RobotOutlined />}
+            onClick={() => setIsSmartMode(true)}
+            block
+            size="large"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "20px",
-              flexWrap: "wrap",
-              fontSize: "14px",
+              height: "50px",
+              borderRadius: "8px",
+              fontWeight: "600",
+              backgroundColor: isSmartMode ? "#1890ff" : "#f8f9fa",
+              borderColor: isSmartMode ? "#1890ff" : "#d9d9d9",
+              color: isSmartMode ? "#ffffff" : "#595959",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <SettingOutlined style={{ color: "#1890ff" }} />
-              <Typography.Text strong>生成内容：</Typography.Text>
+            智能模式（AI推荐）
+          </Button>
+          <Button
+            type={!isSmartMode ? "primary" : "default"}
+            icon={<SettingOutlined />}
+            onClick={() => setIsSmartMode(false)}
+            block
+            size="large"
+            style={{
+              height: "50px",
+              borderRadius: "8px",
+              fontWeight: "600",
+              backgroundColor: !isSmartMode ? "#1890ff" : "#f8f9fa",
+              borderColor: !isSmartMode ? "#1890ff" : "#d9d9d9",
+              color: !isSmartMode ? "#ffffff" : "#595959",
+            }}
+          >
+            手动配置
+          </Button>
+        </Space>
+
+        {intelligentAnalysis && isSmartMode && (
+          <Alert
+            style={{
+              marginTop: 16,
+              borderRadius: "8px",
+              backgroundColor: "#f6ffed",
+              border: "1px solid #b7eb8f",
+            }}
+            message={
+              <span style={{ color: "#52c41a", fontWeight: "600" }}>
+                🎯 智能分析结果
+              </span>
+            }
+            description={
+              <div style={{ marginTop: 8 }}>
+                <p style={{ margin: "4px 0", color: "#434343" }}>
+                  <strong>推荐职业:</strong>{" "}
+                  {configurations.careers[intelligentAnalysis.career]?.name}
+                </p>
+                <p style={{ margin: "4px 0", color: "#434343" }}>
+                  <strong>推荐级别:</strong>{" "}
+                  {configurations.levels[intelligentAnalysis.level]?.name}
+                </p>
+                <p style={{ margin: "4px 0", color: "#434343" }}>
+                  <strong>置信度:</strong>{" "}
+                  {Math.round(intelligentAnalysis.confidence * 100)}%
+                </p>
+              </div>
+            }
+            type="success"
+            showIcon
+          />
+        )}
+      </div>
+
+      {/* 职业和级别选择 */}
+      {!isSmartMode && (
+        <div style={{ marginBottom: 28 }}>
+          <Title
+            level={5}
+            style={{
+              color: "#1890ff",
+              fontWeight: "600",
+              marginBottom: 16,
+              fontSize: "15px",
+            }}
+          >
+            🎯 3. 职业配置
+          </Title>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <div>
+              <Text strong style={{ color: "#434343", fontSize: "14px" }}>
+                职业类型:
+              </Text>
+              <Select
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                }}
+                size="large"
+                placeholder="选择职业类型"
+                value={selectedCareer}
+                onChange={(value) => {
+                  setSelectedCareer(value);
+                  setSelectedCategory(""); // 重置分类
+                }}
+              >
+                {Object.entries(configurations.careers).map(([key, career]) => (
+                  <Option key={key} value={key}>
+                    {career.name} - {career.description}
+                  </Option>
+                ))}
+              </Select>
             </div>
 
-            <Checkbox
-              checked={selectedOptions.generateText}
-              disabled={true}
-              style={{ fontSize: "14px" }}
-            >
-              📄 简历文本
-            </Checkbox>
+            {selectedCareer && (
+              <div>
+                <Text strong style={{ color: "#434343", fontSize: "14px" }}>
+                  具体分类:
+                </Text>
+                <Select
+                  style={{
+                    width: "100%",
+                    marginTop: 8,
+                  }}
+                  size="large"
+                  placeholder="选择具体分类"
+                  value={selectedCategory}
+                  onChange={setSelectedCategory}
+                >
+                  {getCurrentCategories().map((category) => (
+                    <Option key={category.key} value={category.key}>
+                      {category.name}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+            )}
 
-            <Checkbox
-              checked={selectedOptions.generateSuggestions}
-              onChange={(e) =>
-                handleOptionChange("generateSuggestions", e.target.checked)
-              }
-              style={{ fontSize: "14px" }}
-              disabled={currentStep > 1}
-            >
-              💡 优化建议
-            </Checkbox>
-
-            <Checkbox
-              checked={selectedOptions.generateQuestions}
-              onChange={(e) =>
-                handleOptionChange("generateQuestions", e.target.checked)
-              }
-              style={{ fontSize: "14px" }}
-              disabled={currentStep > 1}
-            >
-              ❓ 面试题库
-            </Checkbox>
-          </div>
-
-          {currentStep > 1 && (
-            <Typography.Text type="warning" style={{ fontSize: "12px" }}>
-              🔒 配置已锁定
-            </Typography.Text>
-          )}
+            <div>
+              <Text strong style={{ color: "#434343", fontSize: "14px" }}>
+                经验级别:
+              </Text>
+              <Select
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                }}
+                size="large"
+                placeholder="选择经验级别"
+                value={selectedLevel}
+                onChange={setSelectedLevel}
+              >
+                {Object.entries(configurations.levels).map(([key, level]) => (
+                  <Option key={key} value={key}>
+                    {level.name} - {level.description}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+          </Space>
         </div>
-      </Card>
+      )}
 
-      <Card style={{ marginBottom: "24px" }}>
-        <Steps current={currentStep} style={{ marginBottom: "32px" }}>
-          {getDynamicSteps().map((step, index) => (
-            <Step
-              key={index}
-              title={step.title}
-              description={step.description}
+      {/* 生成内容选择 */}
+      <div style={{ marginBottom: 32 }}>
+        <Title
+          level={5}
+          style={{
+            color: "#1890ff",
+            fontWeight: "600",
+            marginBottom: 16,
+            fontSize: "15px",
+          }}
+        >
+          📝 4. 生成内容
+        </Title>
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <div
+            style={{
+              padding: "12px 16px",
+              backgroundColor: "#f6ffed",
+              borderRadius: "8px",
+              border: "1px solid #b7eb8f",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={generateOptions.text}
+              disabled={true}
+              style={{ marginRight: 12, transform: "scale(1.2)" }}
             />
-          ))}
-        </Steps>
-
-        {/* 步骤1：上传文件 */}
-        {currentStep === 0 && (
-          <div style={{ textAlign: "center" }}>
-            <Dragger {...uploadProps} style={{ padding: "40px" }}>
-              <p className="ant-upload-drag-icon">
-                <InboxOutlined style={{ fontSize: "48px", color: "#1890ff" }} />
-              </p>
-              <p className="ant-upload-text">点击或拖拽简历文件到这里上传</p>
-              <p className="ant-upload-hint">
-                支持 PDF、Word 文档和 TXT 文件，文件大小不超过 10MB
-              </p>
-            </Dragger>
+            <Text style={{ color: "#52c41a", fontWeight: "600" }}>
+              简历文本解析 (必选)
+            </Text>
           </div>
-        )}
-
-        {/* 步骤2：确认文件信息 */}
-        {currentStep === 1 && fileInfo && (
-          <div style={{ textAlign: "center" }}>
-            <FileTextOutlined
-              style={{
-                fontSize: "48px",
-                color: "#52c41a",
-                marginBottom: "16px",
-              }}
+          <div
+            style={{
+              padding: "12px 16px",
+              backgroundColor: "#f0f8ff",
+              borderRadius: "8px",
+              border: "1px solid #91d5ff",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={generateOptions.optimization}
+              onChange={(e) =>
+                setGenerateOptions((prev) => ({
+                  ...prev,
+                  optimization: e.target.checked,
+                }))
+              }
+              style={{ marginRight: 12, transform: "scale(1.2)" }}
             />
-            <Title level={4}>文件上传成功</Title>
-            <Card
-              style={{
-                maxWidth: "400px",
-                margin: "0 auto",
-                marginBottom: "24px",
-              }}
-            >
-              <Paragraph>
-                <Text strong>文件名：</Text>
-                {fileInfo.name}
-                <br />
-                <Text strong>文件大小：</Text>
-                {formatFileSize(fileInfo.size)}
-                <br />
-                <Text strong>文件类型：</Text>
-                {fileInfo.type || "未知"}
-                <br />
-                <Text strong>上传时间：</Text>
-                {new Date().toLocaleString()}
-                <br />
-                <Text strong>文件状态：</Text>
-                <Text type="success">✓ 验证通过</Text>
-              </Paragraph>
-            </Card>
-
-            <Space size="large">
-              <Button type="primary" size="large" onClick={handleStartProcess}>
-                开始分析
-              </Button>
-              <Button onClick={handleRestart}>重新上传</Button>
-            </Space>
+            <Text style={{ color: "#1890ff", fontWeight: "500" }}>
+              优化建议
+            </Text>
           </div>
-        )}
+          <div
+            style={{
+              padding: "12px 16px",
+              backgroundColor: "#fff7e6",
+              borderRadius: "8px",
+              border: "1px solid #ffd591",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={generateOptions.questions}
+              onChange={(e) =>
+                setGenerateOptions((prev) => ({
+                  ...prev,
+                  questions: e.target.checked,
+                }))
+              }
+              style={{ marginRight: 12, transform: "scale(1.2)" }}
+            />
+            <Text style={{ color: "#fa8c16", fontWeight: "500" }}>
+              面试题生成
+            </Text>
+          </div>
+        </Space>
+      </div>
 
-        {/* 步骤3：处理中 */}
-        {currentStep === 2 && (
-          <div style={{ textAlign: "center", padding: "40px" }}>
-            <Spin size="large" />
-            <Title level={4} style={{ marginTop: "16px" }}>
-              {processingStatus}
+      {/* 开始分析按钮 */}
+      <Button
+        type="primary"
+        icon={<RobotOutlined />}
+        loading={loading}
+        onClick={handleStartProcess}
+        disabled={!fileInfo}
+        block
+        size="large"
+        style={{
+          height: "60px",
+          fontSize: "18px",
+          fontWeight: "700",
+          borderRadius: "12px",
+          backgroundColor: fileInfo ? "#1890ff" : "#d9d9d9",
+          borderColor: fileInfo ? "#1890ff" : "#d9d9d9",
+          boxShadow: fileInfo ? "0 4px 12px rgba(24, 144, 255, 0.3)" : "none",
+          transform: loading ? "scale(0.98)" : "scale(1)",
+          transition: "all 0.3s ease",
+        }}
+      >
+        {loading ? "🚀 AI分析中..." : "🎯 开始智能分析"}
+      </Button>
+    </Card>
+  );
+
+  // 渲染右侧内容面板
+  const renderRightPanel = () => (
+    <div style={{ width: "100%" }}>
+      {/* 简历文本解析 */}
+      {renderContentCardWithStatus(
+        "简历文本",
+        resumeText,
+        <FileTextOutlined />,
+        "text",
+        contentStatus.text,
+        true
+      )}
+
+      {/* 优化建议 */}
+      {renderContentCardWithStatus(
+        "优化建议",
+        optimizedResume,
+        <BulbOutlined />,
+        "optimization",
+        contentStatus.optimization,
+        generateOptions.optimization
+      )}
+
+      {/* 面试题 */}
+      {renderContentCardWithStatus(
+        "面试题及答案",
+        interviewQuestions,
+        <QuestionCircleOutlined />,
+        "questions",
+        contentStatus.questions,
+        generateOptions.questions
+      )}
+
+      {/* 批量下载 */}
+      {(resumeText || optimizedResume || interviewQuestions) && (
+        <Card
+          style={{
+            marginBottom: "24px",
+            backgroundColor: "#f8f9fa",
+            borderColor: "#52c41a",
+          }}
+        >
+          <div style={{ textAlign: "center", padding: "20px" }}>
+            <Title level={4} style={{ marginBottom: 16, color: "#52c41a" }}>
+              📥 下载中心
             </Title>
-            <Paragraph type="secondary">
-              AI正在分析您的简历，请耐心等待...
-            </Paragraph>
-          </div>
-        )}
-
-        {/* 步骤4及之后：实时结果展示 */}
-        {currentStep >= 3 && (
-          <div>
-            {/* 顶部状态和下载按钮 */}
-            <div style={{ textAlign: "center", marginBottom: "32px" }}>
-              <Title level={3}>
-                {!loading &&
-                contentStatus.text.completed &&
-                (!selectedOptions.generateSuggestions ||
-                  contentStatus.suggestions.completed) &&
-                (!selectedOptions.generateQuestions ||
-                  contentStatus.questions.completed)
-                  ? "🎉 分析完成！"
-                  : "📊 分析进行中..."}
-              </Title>
-              <Paragraph type="secondary">
-                {!loading &&
-                contentStatus.text.completed &&
-                (!selectedOptions.generateSuggestions ||
-                  contentStatus.suggestions.completed) &&
-                (!selectedOptions.generateQuestions ||
-                  contentStatus.questions.completed)
-                  ? "您的简历分析已完成，您可以查看结果并下载相关文件"
-                  : "AI正在分析您的简历，已完成的内容会实时显示"}
-              </Paragraph>
-
-              {/* 只有在所有任务完成后才显示下载按钮 */}
-              {!loading &&
-                contentStatus.text.completed &&
-                (!selectedOptions.generateSuggestions ||
-                  contentStatus.suggestions.completed) &&
-                (!selectedOptions.generateQuestions ||
-                  contentStatus.questions.completed) && (
-                  <Space size="large" style={{ marginTop: "16px" }}>
-                    <Button
-                      type="primary"
-                      size="large"
-                      icon={<DownloadOutlined />}
-                      onClick={handleDownloadAllFiles}
-                    >
-                      下载全部文件 (ZIP)
-                    </Button>
-                    <Button size="large" onClick={handleRestart}>
-                      分析新的简历
-                    </Button>
-                  </Space>
-                )}
-            </div>
-
-            <Divider />
-
-            {/* 实时展示各个内容区域 */}
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "24px" }}
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleDownloadAllFiles}
+              size="large"
+              style={{
+                height: "50px",
+                fontSize: "16px",
+                fontWeight: "600",
+                borderRadius: "8px",
+                backgroundColor: "#52c41a",
+                borderColor: "#52c41a",
+              }}
             >
-              {/* 简历文本区域 */}
-              {renderContentCardWithStatus(
-                "简历文本",
-                resumeText,
-                <FileTextOutlined />,
-                "resume",
-                contentStatus.text,
-                true // 始终显示
-              )}
-
-              {/* 优化建议区域 */}
-              {selectedOptions.generateSuggestions &&
-                renderContentCardWithStatus(
-                  "优化建议",
-                  optimizedResume,
-                  <BulbOutlined />,
-                  "optimization",
-                  contentStatus.suggestions,
-                  contentStatus.text.completed // 只有在文本完成后才显示
-                )}
-
-              {/* 面试题区域 */}
-              {selectedOptions.generateQuestions &&
-                renderContentCardWithStatus(
-                  "面试题及答案",
-                  interviewQuestions,
-                  <QuestionCircleOutlined />,
-                  "questions",
-                  contentStatus.questions,
-                  contentStatus.text.completed // 只有在文本完成后才显示
-                )}
+              下载全部文件 (ZIP包)
+            </Button>
+            <div style={{ marginTop: 12 }}>
+              <Text type="secondary" style={{ fontSize: "13px" }}>
+                包含所有生成的内容，支持多种格式 (PDF、Markdown、TXT)
+              </Text>
             </div>
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
+    </div>
+  );
 
-      {/* Markdown预览弹窗 */}
+  // 渲染状态图标
+  const renderStatusIcon = (status) => {
+    if (!status) {
+      return <span style={{ color: "#d9d9d9" }}>等待中</span>;
+    }
+    if (status.loading) {
+      return <Spin indicator={<LoadingOutlined />} />;
+    } else if (status.completed) {
+      return <CheckCircleOutlined style={{ color: "#52c41a" }} />;
+    } else if (status.error) {
+      return <ExclamationCircleOutlined style={{ color: "#f5222d" }} />;
+    } else {
+      return <span style={{ color: "#d9d9d9" }}>等待中</span>;
+    }
+  };
+
+  // 渲染内容操作按钮
+  const renderContentActions = (content, title) => (
+    <Space>
+      <Tooltip title="预览">
+        <Button
+          type="text"
+          icon={<EyeOutlined />}
+          onClick={() => handlePreview(content, title)}
+        />
+      </Tooltip>
+      <Tooltip title="复制">
+        <Button
+          type="text"
+          icon={<CopyOutlined />}
+          onClick={() => handleCopyContent(content, title)}
+        />
+      </Tooltip>
+      <Tooltip title="下载 Markdown">
+        <Button
+          type="text"
+          icon={<FileMarkdownOutlined />}
+          onClick={() => handleSingleDownload(content, `${title}.md`, "md")}
+        />
+      </Tooltip>
+      <Tooltip title="下载 PDF">
+        <Button
+          type="text"
+          icon={<FilePdfOutlined />}
+          onClick={() => handleSingleDownload(content, `${title}.pdf`, "pdf")}
+        />
+      </Tooltip>
+    </Space>
+  );
+
+  return (
+    <div
+      style={{
+        padding: 24,
+        minHeight: "100vh",
+        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        position: "relative",
+      }}
+    >
+      {/* 背景装饰 */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          pointerEvents: "none",
+        }}
+      />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <Title
+            level={1}
+            style={{
+              color: "#ffffff",
+              marginBottom: 8,
+              fontSize: "42px",
+              fontWeight: "700",
+              textShadow: "0 2px 4px rgba(0,0,0,0.3)",
+            }}
+          >
+            🚀 智能简历分析系统
+          </Title>
+          <Text
+            style={{
+              color: "#ffffff",
+              fontSize: "18px",
+              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+            }}
+          >
+            AI驱动的专业简历分析与优化平台
+          </Text>
+        </div>
+
+        {/* 返回按钮在标题下边 */}
+        <div style={{ marginBottom: 32, textAlign: "center" }}>
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={onBackToSelector}
+            style={{
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: "600",
+              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+            }}
+          >
+            ← 返回模式选择
+          </Button>
+        </div>
+
+        <Row gutter={32}>
+          {/* 左侧配置面板 */}
+          <Col xs={24} lg={8}>
+            {renderLeftPanel()}
+          </Col>
+
+          {/* 右侧内容面板 */}
+          <Col xs={24} lg={16}>
+            {renderRightPanel()}
+          </Col>
+        </Row>
+      </div>
+
+      {/* 预览Modal */}
       <Modal
-        title={previewTitle}
+        title={`预览 - ${previewTitle}`}
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
+        width={800}
         footer={[
           <Button key="close" onClick={() => setPreviewVisible(false)}>
             关闭
           </Button>,
         ]}
-        width={800}
       >
-        <div
-          style={{
-            maxHeight: "500px",
-            overflowY: "auto",
-            padding: "16px",
-            backgroundColor: "#fafafa",
-            borderRadius: "6px",
-          }}
-        >
+        <div style={{ maxHeight: 600, overflow: "auto" }}>
           <ReactMarkdown>{previewContent}</ReactMarkdown>
         </div>
       </Modal>
